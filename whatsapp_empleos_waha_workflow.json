@@ -1,0 +1,396 @@
+{
+  "name": "Chat Informativo de Vacantes - WhatsApp (WAHA)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 12 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-daily-1215",
+      "name": "Disparador Diario (12:15 PM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "waha-empleos",
+        "options": {}
+      },
+      "id": "webhook-waha-chat",
+      "name": "Webhook WAHA (Mensajes)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        520
+      ],
+      "webhookId": "waha-empleos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst yyyy = now.getFullYear();\nconst mm = String(now.getMonth() + 1).padStart(2, '0');\nconst dd = String(now.getDate()).padStart(2, '0');\nconst fecha = `${yyyy}-${mm}-${dd}`;\nconst baseDir = '/data/busqueda-empleo/postulaciones';\n\nreturn [{\n  json: {\n    fecha,\n    resumenPath: `${baseDir}/${fecha}_resumen.md`,\n    chatId: '573168114138@c.us'\n  }\n}];"
+      },
+      "id": "code-fecha-hoy",
+      "name": "Calcular Ruta del Resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.resumenPath }}"
+      },
+      "id": "read-resumen-diario",
+      "name": "Leer Resumen Diario (.md)",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        700,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "extract-resumen-text",
+      "name": "Extraer Texto Markdown",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        920,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data || 'No se encontró resumen para hoy.';\nconst limpio = raw\n  .replace(/^### /gm, '🔹 *')\n  .replace(/^## /gm, '\\n📌 *')\n  .replace(/^# /gm, '📋 *')\n  .replace(/\\*\\*(.*?)\\*\\*/g, '*$1*')\n  .slice(0, 3800);\n\nconst mensaje = `${limpio}\\n\\n💬 *Comandos disponibles:*\\n- Escribe *RESUMEN* para ver las vacantes de hoy`;\n\nreturn [{\n  json: {\n    chatId: '573168114138@c.us',\n    mensaje\n  }\n}];"
+      },
+      "id": "format-whatsapp-daily",
+      "name": "Formatear Mensaje WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://waha:3000/api/sendText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "b28d5fe7553f448e98757c380dc53b57"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chatId: $json.chatId, text: $json.mensaje, session: 'default' }) }}",
+        "options": {}
+      },
+      "id": "waha-send-daily",
+      "name": "Enviar Resumen por WAHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst payload = body.payload || {};\nconst fromMe = payload.fromMe === true;\nconst texto = (payload.body || '').trim();\nconst lower = texto.toLowerCase();\nconst chatId = payload.from || '573168114138@c.us';\n\nconst now = new Date();\nconst fecha = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;\nconst baseDir = '/data/busqueda-empleo/postulaciones';\n\nlet modo = 'ignorar';\nif (!fromMe && texto.length > 0) {\n  if (lower.includes('resumen') || lower.includes('hoy') || lower.includes('vacantes')) {\n    modo = 'resumen';\n  } else if (lower.includes('ayuda') || lower.includes('hola') || lower.includes('menu')) {\n    modo = 'ayuda';\n  }\n}\n\nreturn [{\n  json: {\n    chatId,\n    texto,\n    modo,\n    resumenPath: `${baseDir}/${fecha}_resumen.md`\n  }\n}];"
+      },
+      "id": "parse-user-command",
+      "name": "Interpretar Comando de Chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.modo }}",
+                    "rightValue": "resumen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Resumen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.modo }}",
+                    "rightValue": "ayuda",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Ayuda"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-modo",
+      "name": "Enrutar Comando",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        700,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.resumenPath }}"
+      },
+      "id": "read-resumen-chat",
+      "name": "Leer Resumen (Chat)",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        940,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "extract-resumen-chat",
+      "name": "Extraer Texto (Chat)",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://waha:3000/api/sendText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "b28d5fe7553f448e98757c380dc53b57"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chatId: $('Interpretar Comando de Chat').item.json.chatId, text: ($json.data || 'Aún no hay resumen generado para hoy.').slice(0, 3900), session: 'default' }) }}",
+        "options": {}
+      },
+      "id": "waha-reply-resumen",
+      "name": "Responder Resumen por WAHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1380,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://waha:3000/api/sendText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "b28d5fe7553f448e98757c380dc53b57"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chatId: $json.chatId, text: '👋 *Asistente de Vacantes*\\n\\nEscribe *RESUMEN* o *VACANTES* para recibir las ofertas segmentadas de hoy.', session: 'default' }) }}",
+        "options": {}
+      },
+      "id": "waha-reply-ayuda",
+      "name": "Responder Menú de Ayuda",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        640
+      ]
+    }
+  ],
+  "connections": {
+    "Disparador Diario (12:15 PM)": {
+      "main": [
+        [
+          {
+            "node": "Calcular Ruta del Resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Ruta del Resumen": {
+      "main": [
+        [
+          {
+            "node": "Leer Resumen Diario (.md)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Resumen Diario (.md)": {
+      "main": [
+        [
+          {
+            "node": "Extraer Texto Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Texto Markdown": {
+      "main": [
+        [
+          {
+            "node": "Formatear Mensaje WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Mensaje WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Enviar Resumen por WAHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook WAHA (Mensajes)": {
+      "main": [
+        [
+          {
+            "node": "Interpretar Comando de Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar Comando de Chat": {
+      "main": [
+        [
+          {
+            "node": "Enrutar Comando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrutar Comando": {
+      "main": [
+        [
+          {
+            "node": "Leer Resumen (Chat)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder Menú de Ayuda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Resumen (Chat)": {
+      "main": [
+        [
+          {
+            "node": "Extraer Texto (Chat)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Texto (Chat)": {
+      "main": [
+        [
+          {
+            "node": "Responder Resumen por WAHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  }
+}

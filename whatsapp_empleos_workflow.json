@@ -1,0 +1,332 @@
+{
+  "name": "Chat Informativo de Vacantes - WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 12 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-daily-1215",
+      "name": "Disparador Diario (12:15 PM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ]
+      },
+      "id": "whatsapp-trigger-chat",
+      "name": "WhatsApp Trigger (Consultas)",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        520
+      ],
+      "webhookId": "whatsapp-empleos-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst yyyy = now.getFullYear();\nconst mm = String(now.getMonth() + 1).padStart(2, '0');\nconst dd = String(now.getDate()).padStart(2, '0');\nconst fecha = `${yyyy}-${mm}-${dd}`;\nconst baseDir = '/data/busqueda-empleo/postulaciones';\n\nreturn [{\n  json: {\n    fecha,\n    resumenPath: `${baseDir}/${fecha}_resumen.md`,\n    baseDir\n  }\n}];"
+      },
+      "id": "code-fecha-hoy",
+      "name": "Calcular Ruta del Resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.resumenPath }}"
+      },
+      "id": "read-resumen-diario",
+      "name": "Leer Resumen Diario (.md)",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        700,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "extract-resumen-text",
+      "name": "Extraer Texto Markdown",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        920,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data || 'No se encontró resumen para hoy.';\n// Limpiar formato Markdown pesado para WhatsApp y respetar límite de caracteres\nconst limpio = raw\n  .replace(/^### /gm, '🔹 *')\n  .replace(/^## /gm, '\\n📌 *')\n  .replace(/^# /gm, '📋 *')\n  .replace(/\\*\\*(.*?)\\*\\*/g, '*$1*')\n  .slice(0, 3800);\n\nconst mensaje = `${limpio}\\n\\n💬 *Comandos disponibles:*\\n- Escribe *RESUMEN* para ver las vacantes de hoy\\n- Escribe *CV [empresa]* para recibir el CV adaptado`;\n\nreturn [{ json: { mensaje } }];"
+      },
+      "id": "format-whatsapp-daily",
+      "name": "Formatear Mensaje WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "recipientPhoneNumber": "573168114138",
+        "textBody": "={{ $json.mensaje }}"
+      },
+      "id": "whatsapp-send-daily",
+      "name": "Enviar Resumen a WhatsApp",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json;\nconst texto = (msg.messages?.[0]?.text?.body || '').trim();\nconst lower = texto.toLowerCase();\nconst from = msg.messages?.[0]?.from || '573168114138';\n\nconst now = new Date();\nconst fecha = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;\nconst baseDir = '/data/busqueda-empleo/postulaciones';\n\nlet modo = 'ayuda';\nif (lower.includes('resumen') || lower.includes('hoy') || lower.includes('vacantes')) {\n  modo = 'resumen';\n} else if (lower.startsWith('cv')) {\n  modo = 'cv';\n}\n\nreturn [{\n  json: {\n    from,\n    texto,\n    modo,\n    fecha,\n    baseDir,\n    resumenPath: `${baseDir}/${fecha}_resumen.md`\n  }\n}];"
+      },
+      "id": "parse-user-command",
+      "name": "Interpretar Comando de Chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.modo }}",
+              "rightValue": "resumen",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-es-resumen",
+      "name": "¿Pidió Resumen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.resumenPath }}"
+      },
+      "id": "read-resumen-chat",
+      "name": "Leer Resumen (Chat)",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        920,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "extract-resumen-chat",
+      "name": "Extraer Texto (Chat)",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "recipientPhoneNumber": "={{ $('Interpretar Comando de Chat').item.json.from }}",
+        "textBody": "={{ ($json.data || 'Aún no hay resumen generado para hoy.').slice(0, 3900) }}"
+      },
+      "id": "whatsapp-reply-resumen",
+      "name": "Responder Resumen",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "recipientPhoneNumber": "={{ $json.from }}",
+        "textBody": "👋 *Asistente de Vacantes*\n\nPuedes escribir:\n- *RESUMEN*: Ver las vacantes segmentadas de hoy.\n- *CV [nombre]*: Solicitar el CV adaptado (próximamente con búsqueda por archivo).\n\n📂 Carpeta local: C:\\Users\\Fabian\\.gemini\\antigravity\\scratch\\busqueda-empleo\\postulaciones"
+      },
+      "id": "whatsapp-reply-ayuda",
+      "name": "Responder Menú de Ayuda",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        640
+      ]
+    }
+  ],
+  "connections": {
+    "Disparador Diario (12:15 PM)": {
+      "main": [
+        [
+          {
+            "node": "Calcular Ruta del Resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Ruta del Resumen": {
+      "main": [
+        [
+          {
+            "node": "Leer Resumen Diario (.md)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Resumen Diario (.md)": {
+      "main": [
+        [
+          {
+            "node": "Extraer Texto Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Texto Markdown": {
+      "main": [
+        [
+          {
+            "node": "Formatear Mensaje WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Mensaje WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Enviar Resumen a WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Trigger (Consultas)": {
+      "main": [
+        [
+          {
+            "node": "Interpretar Comando de Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar Comando de Chat": {
+      "main": [
+        [
+          {
+            "node": "¿Pidió Resumen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Pidió Resumen?": {
+      "main": [
+        [
+          {
+            "node": "Leer Resumen (Chat)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder Menú de Ayuda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Resumen (Chat)": {
+      "main": [
+        [
+          {
+            "node": "Extraer Texto (Chat)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Texto (Chat)": {
+      "main": [
+        [
+          {
+            "node": "Responder Resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  }
+}

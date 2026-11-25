@@ -1,0 +1,37 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-empleos
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=America/Bogota
+      - TZ=America/Bogota
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /* Ruta de archivos de chat y compose
+
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: waha-whatsapp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=America/Bogota
+      - WHATSAPP_DEFAULT_ENGINE=NOWEB
+      - WHATSAPP_HOOK_URL=http://n8n:5678/webhook/waha-empleos
+      - WHATSAPP_HOOK_EVENTS=message
+      - WAHA_API_KEY=/* Api Kay deWaha
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD= /*Contraseña unica
+    volumes:
+      - waha_sessions:/app/.sessions
+
+volumes:
+  n8n_data:
+  waha_sessions:
